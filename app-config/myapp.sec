@@ -1,3 +1,8 @@
 username=user1
 password=pass1
 salt=xyz123
+
+oc new-app --name myapp --build-env \
+npm_config_registry=https://registry.npmjs.org/repository/nodejs \
+nodejs:16-ubi8~https://github.com/marciodevelopment/DO288-apps#app-config \
+--context-dir app-config
