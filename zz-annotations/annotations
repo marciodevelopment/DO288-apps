@@ -1,0 +1,289 @@
+
+
+
+Commands
+************************
+Podman
+************************
+-- Login quay.io
+podman login quay.io
+
+-- Logout
+podman logout quay.io --all
+
+-- Build a image
+podman build --layers=false -t do288-hello-java .
+
+
+-- Tag a image
+podman tag do288-hello-java quay.io/mwielganczuk/do288-hello-java
+
+-- push a image to registry
+podman push --format v2s1 quay.io/mwielganczuk/do288-hello-java
+
+-- Remove all images
+podman rmi -a --force
+
+-- run a image
+podman run -d --name hello-java quay.io/mwielganczuk/do288-hello-java 
+
+-- stop the container
+podman stop pod_id
+
+-- remove the container
+podman rm pod_id
+
+-- show all containers
+podman ps -a
+
+
+-- extract a podman image as oci format. Used to export to open shift repository
+podman save --format oci-dir -o ./hello-java localhost/do288-hello-java
+
+
+
+************************
+Skopeo
+************************
+- Inspect a image
+skopeo inspect docker://quay.io/mwielganczuk/do288-hello-java
+
+
+
+************************
+Openshift
+************************
+- Delete project
+oc delete project name_project
+
+- Show the pods
+oc get pods
+
+- Show the logs of deployment
+oc logs pod_id
+
+- Show the routes
+oc get routes
+
+- Show the status of project
+oc status
+
+- Expose the service for the outside the cluster
+- Create a route for the service
+oc expose svc/elvis
+
+- Create a map config
+oc create cm appconfig --from-literal APP_MSG="Elvis lives"
+
+
+- Describe resources
+oc describe cm/appconfig
+
+- Set the config maps to deployment
+oc set env deployment/elvis --from cm/appconfig
+
+- Create a new app using a docker image
+oc new-app --name elvis quay.io/mwielganczuk/do288-hello-java
+
+- Create a project
+oc new-project design-container
+oc new-app --name sleep --image quay.io/mwielganczuk/do288-hello-java
+--name sleep -> name of application
+
+
+-- delete the project
+oc delete all -l app=myapp
+
+
+
+-- login on local openshift
+oc login -u developer -p developer url_api
+
+-- Create a secret from the container registry API access token that was stored by Podman.
+oc create secret generic quayio \
+--from-file .dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json \
+--type kubernetes.io/dockerconfigjson
+
+-- Link the new secret to the default service account.
+oc secrets link default quayio --for pull
+
+
+oc new-app --name myapp --build-env npm_config_registry=http://registry.npmjs.org/repository/nodejs nodejs:16-ubi8~https://github.com/marciodevelopment/DO288-apps#app-config --context-dir app-config
+
+
+
+
+https://access.redhat.com/RegistryAuthentication
+
+- Authenticating OpenShift to Private Registries
+- You can provide your private registry credentials directly to the oc create secret command:
+
+oc create secret docker-registry registrycreds \
+--docker-server registry.example.com \
+--docker-username youruser \
+--docker-password y
+
+- Another way of creating the secret is to use the authentication token from the podman login command:
+oc create secret generic registrycreds \
+--from-file .dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json \
+--type kubernetes.io/dockerconfigjson
+
+- Link the secret to the default service account from your project:
+oc secrets link default registrycreds --for pull
+
+- To use the secret to access an S2I builder image, link the secret to the builder service account from your project:
+oc secrets link builder registrycreds
+
+
+-- Change the spec.defaultRoute attribute to true, and the Image Registry operator creates a route to expose the internal registry
+oc patch config.imageregistry cluster -n openshift-image-registry \
+--type merge -p '{"spec":{"defaultRoute":true}}'
+
+- Get the route of registry
+oc get route -n openshift-image-registry
+
+
+-- Authenticating to an Internal Registry
+- fetch the open shift token
+TOKEN=$(oc whoami -t)
+
+-Use the token as part of a login subcommand from Podman:
+podman login -u myuser -p ${TOKEN} \
+default-route-openshift-image-registry.domain.example.com
+
+- example of laptop
+podman login -u kubeadmin -p ${TOKEN} default-route-openshift-image-registry.apps-crc.testing
+
+-- You can also use the token as the value of the --[src|dst]creds options from Skopeo.
+skopeo inspect --creds=myuser:${TOKEN} \
+docker://default-route-openshift-image-registry.domain.example.com/...
+
+skopeo inspect --creds=kubeadmin:${TOKEN} docker://default-route-openshift-image-registry.apps-crc.testing
+
+
+skopeo inspect docker://default-route-openshift-image-registry.apps-crc.testing
+skopeo inspect --tls-verify=false docker://default-route-openshift-image-registry.apps-crc.testing
+
+
+sudo mkdir -p /etc/containers/certs.d/default-route-openshift-image-registry.apps-crc.testing
+sudo cp registry-ca.crt /etc/containers/certs.d/default-route-openshift-image-registry.apps-crc.testing/ca.crt
+
+-- Granting Access to Images in an Internal Registry
+oc policy add-role-to-user system:image-puller \
+user_name -n project_name
+
+-- These roles allow users to pull and inspect images from the internal registry.
+registry-viewer and system:image-puller
+
+-- These roles allow users to push and tag images to the internal registry.
+registry-editor and system:image-pusher
+https://access.redhat.com/documentation/en-us/openshift_container_platform/4.10/html-single/registry/index#accessing-the-registry
+
+INTERNAL_REGISTRY=default-route-openshift-image-registry.apps-crc.testing
+https://medium.com/@mgreenbe_84803/using-openshifts-internal-registry-e4a81d09da59
+
+
+-- show the images on Image Stream
+oc get is
+
+-- Copy the image to IS
+skopeo copy --format v2s1 \
+--dest-creds=kubeadmin:${TOKEN} \
+--tls-verify=false \
+oci:hello-java \
+docker://${REGISTRY}/${RHT_OCP4_DEV_USER}-common/hello-java:1.0
+
+
+-- Show the images from openshift
+ oc get is -n openshift -o name
+ oc get istag -n openshift | grep php 
+oc describe is php -n openshift
+
+-- Create the hello-world image stream that points to the redhattraining/hello-world-nginx container image from Quay.io:
+oc import-image hello-world --confirm --from quay.io/redhattraining/hello-world-nginx
+
+-- Verify if its created
+oc get istag
+
+--Describe the container image
+oc describe is hello-world
+
+
+---------------------- Managing Application Builds -------------------
+https://access.redhat.com/documentation/en-us/openshift_container_platform/4.10/html-single/cicd/index#basic-build-operations
+-- Starts a new build manually. The build configuration resource name is the only required argument to start a new build.
+-- A succesfull build creates a new container image in the output ImageStreamTag. If a deployment configuration defines a trigger on that ImageStreamTag, the deployment process starts.
+oc start-build name
+
+-- Cancels a build. only possible to cancel builds that are in running or pending state
+oc cancel-build name
+
+-- Deletes a build configuration
+oc delete bc/name
+
+-- Describes details about a build configuration resource and the associated builds
+oc describe bc name
+
+-- Shows the build logs. You can check if your application is building correctly.
+-- The -f option follows the log until you terminate the command with Ctrl+C.
+oc logs -f bc/name
+-- Display the build logs from a specific build:
+oc logs build/name-1
+
+Pruning Builds
+apiVersion: "v1"
+kind: "BuildConfig"
+metadata:
+  name: "sample-build"
+spec:
+  successfulBuildsHistoryLimit: 2
+  failedBuildsHistoryLimit: 2
+  ...contents omitted...
+
+-- Log Verbosity
+oc set env bc/name BUILD_LOGLEVEL="4" ## 0 - 5
+
+
+
+
+
+
+************************
+CRC
+************************
+
+-- stop openshift
+crc stop
+
+-- run the open shift
+crc start
+
+-- console
+crc console
+
+Log in as administrator:
+  Username: kubeadmin
+  Password: sIbn8-eAoMD-UYeSS-37r8J
+
+Log in as user:
+  Username: developer
+  Password: developer
+
+
+  $ eval $(crc oc-env)
+  $ oc login -u developer https://api.crc.testing:6443
+  oc login -u kubeadmin https://api.crc.testing:6443
+
+
+
+
+
+************************
+LInux
+************************
+
+- 
+https://console-openshift-console.apps-crc.testing
+
+Dúvidas:
+Teremos um registro de imagem externo ao openshift ?
