@@ -1,0 +1,28 @@
+FROM registry.access.redhat.com/ubi8/ubi:8.0
+
+
+LABEL io.k8s.description="My custom Builder" \   --> Set the labels that are used for RHOCP to describe the builder image.
+    io.k8s.display-name="Nginx 1.6.3" \
+    io.openshift.expose-services="8080:http" \
+    io.openshift.tags="builder,webserver,html,nginx" \
+    io.openshift.s2i.scripts-url="image:///usr/libexec/s2i"  --> Tell S2I where to find its mandatory scripts (run, assemble).
+
+RUN yum install -y epel-release && \  --> Install the NGINX web server package and clean the Yum cache.
+    yum install -y --nodocs nginx && \
+    yum clean all
+
+EXPOSE 8080 -> Set the default port for applications built using this image.
+
+COPY ./s2i/bin/ /usr/libexec/s2i --> Copy the S2I scripts to the /usr/libexec/s2i directory.
+
+The assemble script may be defined as follows:
+#!/bin/bash -e
+if [ "$(ls -A /tmp/src)" ]; then
+  mv /tmp/src/* /usr/share/nginx/html/1
+fi
+
+
+Override the default NGINX index.html file.
+The run script may be defined as follows:
+#!/bin/bash -e
+/usr/sbin/nginx -g "daemon off;"
